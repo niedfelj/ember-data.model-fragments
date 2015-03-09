@@ -4,10 +4,13 @@ This package provides support for sub-models that can be treated much like `belo
 
 :warning: This project is not compatible with Ember Data v1.0.0-beta.12, due to a bug in that version. Use the following table to decide which version of this project to use with your app:
 
+:warning: Ember Data v1.0.0-beta.15 introduced a breaking change to the serializer API with [Snapshots](https://github.com/emberjs/data/pull/2623). Since this affects fragment serialization as well, support for it has been added in a minor version bump (v0.3.0). See the [serializing](#serializing) section below for more information.
+
 | Ember Data | Model Fragments |
 |------------|-----------------|
 | > v1.0.0-beta.7 <= v1.0.0-beta.11 | v0.2.3 |
-| > v1.0.0-beta.14 | > v0.2.4 |
+| v1.0.0-beta.14 | v0.2.8 |
+| >= v1.0.0-beta.15 | v0.3.0 |
 
 ## Installation
 
@@ -181,6 +184,54 @@ App.Person = DS.Model.extend({
       }
     }
   })
+});
+```
+## Serializing
+
+Serializing records with fragment attributes works using a special `DS.Transform` that serializes each fragment or fragment array. This results in fragments being nested in JSON as expected, and avoids the need for any custom serialization logic for most cases. This also means that model fragments can have their own custom serializers, just as normal models can:
+
+```javascript
+App.Name = DS.ModelFragment.extend({
+  given  : DS.attr('string'),
+  family : DS.attr('string')
+});
+
+// Serializers for fragments work just as with models
+App.NameSerializer = DS.JSONSerializer.extend({
+  attrs: {
+    given  : 'first',
+    family : 'last'
+  }
+});
+```
+
+If custom serialization of the owner record is needed, fragment [snapshots](http://emberjs.com/api/data/classes/DS.Snapshot.html) can be accessed using the [`Snapshot#attr`](http://emberjs.com/api/data/classes/DS.Snapshot.html#method_attr) method. Note that this differs from how relationships are accessed on snapshots (using `belongsTo`/`hasMany` methods):
+
+```javascript
+// Fragment snapshots are accessed using `snapshot.attr()`
+App.PersonSerializer = DS.JSONSerializer.extend({
+  serialize: function(snapshot, options) {
+    var json = this._super(snapshot, options);
+
+    // Returns a `DS.Snapshot` instance of the fragment
+    var nameSnapshot = snapshot.attr('name');
+
+    json.full_name = nameSnapshot.attr('given') + ' ' + nameSnapshot.attr('family');
+
+    // Returns a plain array of `DS.Snapshot` instances
+    var addressSnapshots = snapshot.attr('addresses');
+
+    json.countries = addressSnapshots.map(function(addressSnapshot) {
+      return addressSnapshot.attr('country');
+    });
+
+    // Returns a plain array of primitives
+    var titlesSnapshot = snapshot.attr('titles');
+
+    json.title_count = titlesSnapshot.length;
+
+    return json;
+  }
 });
 ```
 
